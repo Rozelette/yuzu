@@ -42,6 +42,10 @@ public:
     void ClearInstructionCache() override;
     void PageTableChanged() override;
 
+    size_t AddCodeBreakpoint(VAddr address) override;
+    size_t AddMemBreakpoint(VAddr address, u64 len, GDBStub::BreakpointType type) override;
+    void RemoveBreakpoint(size_t hook) override;
+
 private:
     friend class ARM_Dynarmic_Callbacks;
     std::unique_ptr<ARM_Dynarmic_Callbacks> cb;

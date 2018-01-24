@@ -32,6 +32,9 @@ public:
     void ExecuteInstructions(int num_instructions) override;
     void ClearInstructionCache() override;
     void PageTableChanged() override{};
+    size_t AddCodeBreakpoint(VAddr address) override;
+    size_t AddMemBreakpoint(VAddr address, u64 len, GDBStub::BreakpointType type) override;
+    void RemoveBreakpoint(size_t hook) override;
 
 private:
     uc_engine* uc{};

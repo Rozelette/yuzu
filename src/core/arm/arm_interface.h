@@ -6,6 +6,7 @@
 
 #include <array>
 #include "common/common_types.h"
+#include "core/gdbstub/gdbstub.h"
 #include "core/hle/kernel/vm_manager.h"
 
 /// Generic ARM11 CPU interface
@@ -127,6 +128,28 @@ public:
     u64 GetNumInstructions() const {
         return num_instructions;
     }
+
+    /**
+     * Add a code breakpoint
+     * @param address Address of the instruction to break at
+     * @return A hook to be used later for RemoveBreakpoint
+     */
+    virtual size_t AddCodeBreakpoint(VAddr address) = 0;
+
+    /**
+     * Add a memory breakpoint
+     * @param address Address of the memory location to break at
+     * @param len Length of bytes the breakpoint applies for
+     * @param type Type of memory access to break for. Must be one of Read, Write, or Access.
+     * @return A hook to be used later for RemoveBreakpoint
+     */
+    virtual size_t AddMemBreakpoint(VAddr address, u64 len, GDBStub::BreakpointType type) = 0;
+
+    /**
+     * Removes a breakpoint
+     * @param hook Hook of the breakpoint to remove
+     */
+    virtual void RemoveBreakpoint(size_t hook) = 0;
 
 protected:
     /**

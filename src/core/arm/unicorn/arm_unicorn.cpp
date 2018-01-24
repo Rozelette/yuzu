@@ -8,6 +8,7 @@
 #include "core/arm/unicorn/arm_unicorn.h"
 #include "core/core.h"
 #include "core/core_timing.h"
+#include "core/gdbstub/gdbstub.h"
 #include "core/hle/kernel/svc.h"
 
 // Load Unicorn DLL once on Windows using RAII
@@ -55,6 +56,24 @@ static bool UnmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 addr, int si
     ASSERT_MSG(false, "Attempted to read from unmapped memory: 0x%llx", addr);
     return {};
 }
+
+static void CodeBreakpointHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
+    u64 pc{};
+    CHECKED(uc_reg_read(uc, UC_ARM64_REG_PC, &pc));
+
+    LOG_DEBUG(Debug_Breakpoint, "Hit breakpoint at %016llx", address, pc);
+    LOG_DEBUG(Debug_Breakpoint, "pc1: %016llx", pc);
+    CHECKED(uc_emu_stop(uc));
+    CHECKED(uc_reg_read(uc, UC_ARM64_REG_PC, &pc));
+    LOG_DEBUG(Debug_Breakpoint, "pc2: %016llx", pc);
+    pc = Core::CPU().GetPC();
+    LOG_DEBUG(Debug_Breakpoint, "pc3: %016llx", pc);
+    GDBStub::SetBreakpointPC(pc);
+    GDBStub::Break(false);
+}
+
+static void MemBreakpointHook(uc_engine* uc, uc_mem_type type, uint64_t address, uint32_t size,
+                              uint64_t value, void* user_data) {}
 
 ARM_Unicorn::ARM_Unicorn() {
     CHECKED(uc_open(UC_ARCH_ARM64, UC_MODE_ARM, &uc));
@@ -219,3 +238,36 @@ void ARM_Unicorn::PrepareReschedule() {
 }
 
 void ARM_Unicorn::ClearInstructionCache() {}
+
+size_t ARM_Unicorn::AddCodeBreakpoint(VAddr address) {
+    size_t hook;
+    CHECKED(uc_hook_add(uc, &hook, UC_HOOK_CODE, reinterpret_cast<void*>(CodeBreakpointHook), this,
+                        address, address));
+    return hook;
+}
+
+size_t ARM_Unicorn::AddMemBreakpoint(VAddr address, u64 len, GDBStub::BreakpointType type) {
+    size_t hook;
+    u32 hook_type{};
+    switch (type) {
+    case GDBStub::BreakpointType::Read:
+        hook_type = UC_HOOK_MEM_READ;
+        break;
+    case GDBStub::BreakpointType::Write:
+        hook_type = UC_HOOK_MEM_WRITE;
+        break;
+    case GDBStub::BreakpointType::Access:
+        hook_type = UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE;
+        break;
+    default:
+        UNREACHABLE();
+        break;
+    }
+    CHECKED(uc_hook_add(uc, &hook, hook_type, reinterpret_cast<void*>(MemBreakpointHook), this,
+                        address, address + len - 1));
+    return hook;
+}
+
+void ARM_Unicorn::RemoveBreakpoint(size_t hook) {
+    CHECKED(uc_hook_del(uc, static_cast<uc_hook>(hook)));
+}

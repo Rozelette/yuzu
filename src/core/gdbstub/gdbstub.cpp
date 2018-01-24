@@ -159,11 +159,15 @@ struct Breakpoint {
     bool active;
     PAddr addr;
     u64 len;
+    size_t hook;
 };
 
 static std::map<u64, Breakpoint> breakpoints_execute;
 static std::map<u64, Breakpoint> breakpoints_read;
 static std::map<u64, Breakpoint> breakpoints_write;
+
+bool use_breakpoint_pc = false;
+u64 breakpoint_pc = 0;
 
 /**
  * Turns hex string character into the equivalent byte.
@@ -362,6 +366,7 @@ static void RemoveBreakpoint(BreakpointType type, PAddr addr) {
     if (bp != p.end()) {
         LOG_DEBUG(Debug_GDBStub, "gdb: removed a breakpoint: %08x bytes at %08x of type %d\n",
                   bp->second.len, bp->second.addr, type);
+        Core::CPU().RemoveBreakpoint(bp->second.hook);
         p.erase(static_cast<u64>(addr));
     }
 }
@@ -598,7 +603,7 @@ static void ReadRegister() {
     if (id <= SP_REGISTER) {
         LongToGdbHex(reply, Core::CPU().GetReg(static_cast<int>(id)));
     } else if (id == PC_REGISTER) {
-        LongToGdbHex(reply, Core::CPU().GetPC());
+        LongToGdbHex(reply, (use_breakpoint_pc) ? breakpoint_pc : Core::CPU().GetPC());
     } else if (id == CPSR_REGISTER) {
         IntToGdbHex(reply, Core::CPU().GetCPSR());
     } else {
@@ -621,7 +626,10 @@ static void ReadRegisters() {
 
     bufptr += (32 * 16);
 
-    LongToGdbHex(bufptr, Core::CPU().GetPC());
+    u64 pc = Core::CPU().GetPC();
+    LOG_DEBUG(Debug_GDBStub, "ReadRegisters: pc: %016llx", pc);
+
+    LongToGdbHex(bufptr, (use_breakpoint_pc) ? breakpoint_pc : Core::CPU().GetPC());
 
     bufptr += 16;
 
@@ -738,6 +746,11 @@ void Break(bool is_memory_break) {
     memory_break = is_memory_break;
 }
 
+void SetBreakpointPC(u64 pc) {
+    use_breakpoint_pc = true;
+    breakpoint_pc = pc;
+}
+
 /// Tell the CPU that it should perform a single step.
 static void Step() {
     step_loop = true;
@@ -756,6 +769,10 @@ bool IsMemoryBreak() {
 
 /// Tell the CPU to continue executing.
 static void Continue() {
+    if (use_breakpoint_pc) {
+        Core::CPU().SetPC(breakpoint_pc);
+        use_breakpoint_pc = false;
+    }
     memory_break = false;
     step_break = false;
     step_loop = false;
@@ -770,12 +787,27 @@ static void Continue() {
  * @param len Length of breakpoint.
  */
 static bool CommitBreakpoint(BreakpointType type, PAddr addr, u64 len) {
+    size_t hook{};
+    switch (type) {
+    case BreakpointType::Execute:
+        hook = Core::CPU().AddCodeBreakpoint(addr);
+        break;
+    case BreakpointType::Read:
+    case BreakpointType::Write:
+    case BreakpointType::Access:
+        hook = Core::CPU().AddMemBreakpoint(addr, len, type);
+        break;
+    default:
+        return false;
+    }
+
     std::map<u64, Breakpoint>& p = GetBreakpointList(type);
 
     Breakpoint breakpoint;
     breakpoint.active = true;
     breakpoint.addr = addr;
     breakpoint.len = len;
+    breakpoint.hook = hook;
     p.insert({addr, breakpoint});
 
     LOG_DEBUG(Debug_GDBStub, "gdb: added %d breakpoint: %08x bytes at %08x\n", type, breakpoint.len,

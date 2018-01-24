@@ -182,3 +182,15 @@ void ARM_Dynarmic::ClearInstructionCache() {
 void ARM_Dynarmic::PageTableChanged() {
     UNIMPLEMENTED();
 }
+
+size_t ARM_Dynarmic::AddCodeBreakpoint(VAddr address) {
+    UNIMPLEMENTED();
+}
+
+size_t ARM_Dynarmic::AddMemBreakpoint(VAddr address, u64 len, GDBStub::BreakpointType type) {
+    UNIMPLEMENTED();
+}
+
+void ARM_Dynarmic::RemoveBreakpoint(size_t hook) {
+    UNIMPLEMENTED();
+}

@@ -79,6 +79,15 @@ BreakpointAddress GetNextBreakpointFromAddress(PAddr addr, GDBStub::BreakpointTy
  */
 bool CheckBreakpoint(PAddr addr, GDBStub::BreakpointType type);
 
+/**
+ * Notify the gdbserver of the proper PC of the CPU during a breakpoint, in case GetPC() is
+ * unreliable. The gdbserver will restore the PC before continuing. Note: intended to be used as a
+ * workaround for Unicorn issue #887
+ *
+ * @param pc PC of the CPU
+ */
+void SetBreakpointPC(u64 pc);
+
 // If set to true, the CPU will halt at the beginning of the next CPU loop.
 bool GetCpuHaltFlag();
 
